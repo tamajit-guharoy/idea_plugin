@@ -5,7 +5,6 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindowManager
@@ -21,8 +20,7 @@ class GenerateTestCase : AnAction() {
         val virtualFile = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
 
         if (isJsonInResources(virtualFile.path)) {
-            // First handle file operations in a write-safe context
-            ApplicationManager.getApplication().invokeAndWait({
+            SwingUtilities.invokeLater {
                 try {
                     // Close all open files first
                     val fileEditorManager = FileEditorManager.getInstance(project)
@@ -32,18 +30,7 @@ class GenerateTestCase : AnAction() {
 
                     // Open the selected file
                     fileEditorManager.openFile(virtualFile, true)
-                } catch (ex: Exception) {
-                    Messages.showErrorDialog(
-                        project,
-                        "Failed to handle file operations: ${ex.message}",
-                        "Error"
-                    )
-                }
-            }, ModalityState.NON_MODAL)
 
-            // Then handle UI operations
-            SwingUtilities.invokeLater {
-                try {
                     // Show Copilot Chat window
                     val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("GitHub Copilot Chat")
                     toolWindow?.show {
