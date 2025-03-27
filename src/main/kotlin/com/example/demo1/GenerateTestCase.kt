@@ -5,6 +5,7 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindowManager
@@ -20,11 +21,29 @@ class GenerateTestCase : AnAction() {
         val virtualFile = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
 
         if (isJsonInResources(virtualFile.path)) {
+            // First handle file operations in a write-safe context
+            ApplicationManager.getApplication().invokeAndWait({
+                try {
+                    // Close all open files first
+                    val fileEditorManager = FileEditorManager.getInstance(project)
+                    fileEditorManager.openFiles.forEach { openFile ->
+                        fileEditorManager.closeFile(openFile)
+                    }
+
+                    // Open the selected file
+                    fileEditorManager.openFile(virtualFile, true)
+                } catch (ex: Exception) {
+                    Messages.showErrorDialog(
+                        project,
+                        "Failed to handle file operations: ${ex.message}",
+                        "Error"
+                    )
+                }
+            }, ModalityState.NON_MODAL)
+
+            // Then handle UI operations
             SwingUtilities.invokeLater {
                 try {
-                    // Open the file first
-                    FileEditorManager.getInstance(project).openFile(virtualFile, true)
-
                     // Show Copilot Chat window
                     val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("GitHub Copilot Chat")
                     toolWindow?.show {
@@ -37,13 +56,12 @@ class GenerateTestCase : AnAction() {
                         val component = content?.component
 
                         if (component != null) {
-                            println(virtualFile)
+                            println(virtualFile.path)
 
-                            // Get default prompt from application-level settings
-                            val settings =
-                                ApplicationManager.getApplication().getService(TestCaseSettings::class.java)
-                            val defaultPrompt = settings.defaultPrompt
-                            println("Default prompt from settings: $defaultPrompt")
+                            // Get settings and fetch appropriate prompt
+                            val settings = ApplicationManager.getApplication().getService(TestCaseSettings::class.java)
+                            val prompt = fetchPrompt(virtualFile.path, settings)
+                            println("Using prompt: $prompt")
 
                             // Find the input text field
                             val textComponents = mutableListOf<javax.swing.text.JTextComponent>()
@@ -58,7 +76,7 @@ class GenerateTestCase : AnAction() {
                                 Thread.sleep(100)  // Wait for focus
 
                                 // Set the text
-                                inputField.text = defaultPrompt
+                                inputField.text = prompt
 
                                 // Press Enter to submit
                                 val robot = Robot()
@@ -70,8 +88,6 @@ class GenerateTestCase : AnAction() {
                             } else {
                                 println("Could not find input field in Copilot Chat")
                             }
-
-                            //   findAndClickAddReferenceButton(component, robot)
                         }
                     }
                 } catch (ex: Exception) {
@@ -82,7 +98,23 @@ class GenerateTestCase : AnAction() {
                     )
                 }
             }
+        } else {
+            Messages.showErrorDialog(
+                project,
+                "This action only works with JSON files in the resources directory",
+                "Invalid File Type"
+            )
         }
+    }
+
+    private fun fetchPrompt(filePath: String, settings: TestCaseSettings): String {
+        val fileName = filePath.substringAfterLast("/").lowercase()
+        val prompt = when {
+            fileName.contains("join") -> settings.joinPrompt
+            fileName.contains("group") || fileName.contains("reduce") -> settings.groupReducePrompt
+            else -> settings.defaultPrompt
+        }
+        return prompt.replace("<<file_name>>", fileName)
     }
 
     private fun findTextComponents(component: Component, textComponents: MutableList<javax.swing.text.JTextComponent>) {
@@ -94,8 +126,6 @@ class GenerateTestCase : AnAction() {
         }
     }
     private fun isJsonInResources(path: String): Boolean {
-        return path.contains("src/main/resources") &&
-                path.endsWith(".json")
+        return path.endsWith(".json")
     }
-
 }

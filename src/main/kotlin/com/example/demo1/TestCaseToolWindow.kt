@@ -1,6 +1,7 @@
 package com.example.demo1;
 
 
+import com.example.demo1.settings.TestCaseSettings
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.fileTypes.FileTypeManager
@@ -26,6 +27,10 @@ import javax.swing.tree.DefaultTreeModel
 
 class TestCaseWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
+        // Close GitHub Copilot Chat window if it's open
+        val copilotToolWindow = ToolWindowManager.getInstance(project).getToolWindow("GitHub Copilot Chat")
+        copilotToolWindow?.hide()
+        
         val testCaseViewer = TestCaseViewer(project)
         val content = ContentFactory.getInstance().createContent(testCaseViewer.getContent(), "", false)
         toolWindow.contentManager.addContent(content)
@@ -194,8 +199,9 @@ class TestCaseViewer(private val project: Project) {
             val packageName = fullClassName.substring(0, lastDot)
             val className = fullClassName.substring(lastDot + 1)
 
-            // Create package directory structure
-            val sourceRoot = File(project.basePath, "src/main/java")
+            // Get class location from settings
+            val settings = TestCaseSettings.getInstance(project)
+            val sourceRoot = File(project.basePath, settings.classLocation)
             val packagePath = packageName.replace('.', File.separatorChar)
             val packageDir = File(sourceRoot, packagePath)
             packageDir.mkdirs()
@@ -218,8 +224,25 @@ class TestCaseViewer(private val project: Project) {
                 }
             }
 
+            // Modify content to add package declaration and replace class name
+            val modifiedContent = buildString {
+                append("package $packageName;\n\n")
+                
+                // Extract the old class name from the content
+                val oldClassNameMatch = "class\\s+(\\w+)\\s*\\{".toRegex().find(content)
+                val oldClassName = oldClassNameMatch?.groupValues?.get(1) ?: ""
+                
+                // Replace all occurrences of the old class name with the new class name
+                val contentWithReplacedClassName = content.replace(oldClassName.toRegex(), className)
+                
+                // Replace the class declaration with the new class name
+                val finalContent = contentWithReplacedClassName.replace("class .*?\\s*\\{".toRegex(), "class $className {")
+                
+                append(finalContent)
+            }
+
             // Write the content to the file
-            javaFile.writeText(content)
+            javaFile.writeText(modifiedContent)
 
             Messages.showInfoMessage(
                 project,
@@ -250,6 +273,10 @@ class TestCaseViewer(private val project: Project) {
                     if (codeList.isNotEmpty()) {
                         println("Loaded ${codeList.size} messages, starting at last message (index $currentIndex)") // Debug log
                         updateContentDisplay()
+                        // Close the GitHub Copilot Chat window after loading content
+                        SwingUtilities.invokeLater {
+                            toolWindow.hide()
+                        }
                     } else {
                         Messages.showErrorDialog(
                             project,

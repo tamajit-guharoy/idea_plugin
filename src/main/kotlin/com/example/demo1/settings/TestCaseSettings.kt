@@ -10,6 +10,9 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 )
 class TestCaseSettings : PersistentStateComponent<TestCaseSettings> {
     var defaultPrompt: String = "create a java method that prints 10 numbers"
+    var classLocation: String = "src/main/java"
+    var joinPrompt: String = "join the following data"
+    var groupReducePrompt: String = "group and reduce the following data"
 
     override fun getState(): TestCaseSettings = this
 
