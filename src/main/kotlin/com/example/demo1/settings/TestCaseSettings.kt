@@ -9,10 +9,10 @@ import com.intellij.util.xmlb.XmlSerializerUtil
     storages = [Storage("jsonViewerSettings.xml")]
 )
 class TestCaseSettings : PersistentStateComponent<TestCaseSettings> {
-    var defaultPrompt: String = "create a java method that prints 10 numbers"
+    var defaultPrompt: String = loadPromptFromFile("/prompts/default_prompt.txt")
     var classLocation: String = "src/main/java"
-    var joinPrompt: String = "join the following data"
-    var groupReducePrompt: String = "group and reduce the following data"
+    var joinPrompt: String = loadPromptFromFile("/prompts/join_prompt.txt")
+    var groupReducePrompt: String = loadPromptFromFile("/prompts/group_reduce_prompt.txt")
 
     override fun getState(): TestCaseSettings = this
 
@@ -21,6 +21,17 @@ class TestCaseSettings : PersistentStateComponent<TestCaseSettings> {
     }
 
     companion object {
+        private fun loadPromptFromFile(resourcePath: String): String {
+            return try {
+                TestCaseSettings::class.java.getResourceAsStream(resourcePath)?.bufferedReader()?.use { 
+                    it.readText().trim() 
+                } ?: "Enter prompt here"
+            } catch (e: Exception) {
+                println("Error loading prompt from $resourcePath: ${e.message}")
+                "Enter prompt here"
+            }
+        }
+
         fun getInstance(project: Project): TestCaseSettings {
             return project.service<TestCaseSettings>()
         }
